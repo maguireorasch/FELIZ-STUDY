@@ -1,0 +1,8 @@
+{
+  "name": "FELIZ STUDY — Your Smart Academic Companion",
+  "description": "Personal academic management system untuk mahasiswa Teknologi Informasi semester 3 dengan jadwal kuliah, manajemen tugas, study timer, digital notebook, document library, dan Google Gemini AI Assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

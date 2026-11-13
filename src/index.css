@@ -1,0 +1,118 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-display: 'Space Grotesk', 'Outfit', system-ui, sans-serif;
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-accent: 'Outfit', 'Space Grotesk', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    scroll-behavior: smooth;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-accent {
+    font-family: var(--font-accent);
+  }
+
+  .font-mono-tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.blue-gradient {
+  background: linear-gradient(135deg, #163A70 0%, #2563EB 58%, #3B82F6 100%);
+}
+
+.blue-glow {
+  box-shadow: 0 0 28px -8px rgba(59, 130, 246, 0.45);
+}
+
+.blue-glass {
+  backdrop-filter: blur(14px);
+}
+
+html, body, aside, header, main, section, article, button, input, select, textarea {
+  transition-property: background-color, border-color, color;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Rich Text Editor Prose Styling */
+.study-editor-content h1 {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0.75rem 0 0.4rem;
+}
+.study-editor-content h2 {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0.65rem 0 0.35rem;
+}
+.study-editor-content ul {
+  list-style-type: disc;
+  padding-left: 1.4rem;
+  margin: 0.4rem 0;
+}
+.study-editor-content ol {
+  list-style-type: decimal;
+  padding-left: 1.4rem;
+  margin: 0.4rem 0;
+}
+.study-editor-content pre,
+.study-editor-content code {
+  font-family: var(--font-mono);
+  background: rgba(37, 99, 235, 0.14);
+  border-radius: 0.375rem;
+}
+.study-editor-content pre {
+  padding: 0.75rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+.study-editor-content a {
+  color: #38BDF8;
+  text-decoration: underline;
+}
+.study-editor-content img {
+  max-width: 100%;
+  border-radius: 0.75rem;
+  margin: 0.5rem 0;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.35);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.7);
+}
