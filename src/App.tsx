@@ -1,584 +1,465 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Heart, Menu, Sparkles, X } from 'lucide-react';
+import type { NavSectionId } from './types/bebe';
 import {
-  BarChart3,
-  Bell,
-  Calendar as CalendarIcon,
-  CalendarClock,
-  CheckSquare,
-  FileText,
-  FolderOpen,
-  LayoutDashboard,
-  Menu,
-  Moon,
-  Search,
-  Settings as SettingsIcon,
-  Sparkles,
-  Sun,
-  Timer,
-  X,
-} from 'lucide-react';
-import {
-  FelizStudyStore,
-  LectureDocument,
-  StudyNavTab,
-} from './types/study';
-import { loadStudyStore, saveStudyStore } from './lib/studyStorage';
-import { getDeadlineIndicator } from './lib/academicHelpers';
-import { StudyLogo } from './components/StudyLogo';
-import { DashboardView } from './components/study/DashboardView';
-import { ScheduleView } from './components/study/ScheduleView';
-import { AssignmentsView } from './components/study/AssignmentsView';
-import { StudyFocusView } from './components/study/StudyFocusView';
-import { NotesView } from './components/study/NotesView';
-import { DocumentsView } from './components/study/DocumentsView';
-import { AiAssistantView } from './components/study/AiAssistantView';
-import { AcademicProgressView } from './components/study/AcademicProgressView';
-import { CalendarView } from './components/study/CalendarView';
-import { SettingsView } from './components/study/SettingsView';
+  AUDIO_TRACK_PATH,
+  loadMusicPreferences,
+  saveMusicPreferences,
+} from './lib/bebeContent';
+import { LoadingFlowerOverlay } from './components/bebe/LoadingFlowerOverlay';
+import { AmbientEffects } from './components/bebe/AmbientEffects';
+import { OpeningEnvelope } from './components/bebe/OpeningEnvelope';
+import { DigitalBouquetArtwork, BOUQUET_FLOWERS } from './components/bebe/DigitalBouquetArtwork';
+import { InteractiveBouquet } from './components/bebe/InteractiveBouquet';
+import { LoveLetterSection } from './components/bebe/LoveLetterSection';
+import { SpecialReasonsSection } from './components/bebe/SpecialReasonsSection';
+import { DigitalGardenSection } from './components/bebe/DigitalGardenSection';
+import { FinalSurpriseSection } from './components/bebe/FinalSurpriseSection';
+import { MusicPlayerWidget } from './components/bebe/MusicPlayerWidget';
+import { CornerRoseSvg } from './components/bebe/FloralSvgIcons';
 
-const NAV_ITEMS: {
-  id: StudyNavTab;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'schedule', label: 'My Schedule', icon: CalendarClock },
-  { id: 'assignments', label: 'Assignments', icon: CheckSquare },
-  { id: 'focus', label: 'Study Focus', icon: Timer },
-  { id: 'notes', label: 'My Notes', icon: FileText },
-  { id: 'documents', label: 'My Documents', icon: FolderOpen },
-  { id: 'ai', label: 'AI Assistant', icon: Sparkles },
-  { id: 'progress', label: 'Academic Progress', icon: BarChart3 },
-  { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
-  { id: 'settings', label: 'Settings', icon: SettingsIcon },
+const NAV_ITEMS: Array<{ id: NavSectionId; label: string }> = [
+  { id: 'home', label: 'HOME' },
+  { id: 'bouquet', label: 'BOUQUET' },
+  { id: 'letter', label: 'LETTER' },
+  { id: 'little-things', label: 'LITTLE THINGS' },
+  { id: 'garden', label: 'GARDEN' },
 ];
 
-const MOBILE_BOTTOM_TABS: StudyNavTab[] = [
-  'dashboard',
-  'schedule',
-  'assignments',
-  'focus',
-  'ai',
-];
-
-export default function App() {
-  const [store, setStore] = useState<FelizStudyStore>(() => loadStudyStore());
-  const [activeTab, setActiveTab] = useState<StudyNavTab>('dashboard');
-  const [globalSearch, setGlobalSearch] = useState('');
-  const [showNotifications, setShowNotifications] = useState(false);
+export function App() {
+  const [loadingDone, setLoadingDone] = useState(false);
+  const [envelopeOpened, setEnvelopeOpened] = useState(false);
+  const [activeNav, setActiveNav] = useState<NavSectionId>('home');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const [nowClock, setNowClock] = useState(() => new Date());
-  const [aiDocToAnalyze, setAiDocToAnalyze] = useState<LectureDocument | null>(null);
+  const [showerActive, setShowerActive] = useState(false);
 
-  // Persist to localStorage automatically
-  useEffect(() => {
-    saveStudyStore(store);
-  }, [store]);
+  // Subtle parallax for homepage bouquet preview
+  const [heroTilt, setHeroTilt] = useState<{ x: number; y: number }>({ x: 2, y: -4 });
 
-  // Sync Dark/Light Blue Edition root class
-  useEffect(() => {
-    const root = document.documentElement;
-    if (store.settings.theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-  }, [store.settings.theme]);
+  // Singleton HTML5 Audio state for Cause You Have — LANY
+  const initialPrefs = loadMusicPreferences();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
 
-  // Live clock for header
+  const [audioAvailable, setAudioAvailable] = useState(false);
+  const [customSourceName, setCustomSourceName] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(initialPrefs.muted);
+  const [volume, setVolume] = useState(initialPrefs.volume);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  // Initialize singleton Audio element & honestly verify whether /assets/music/cause-you-have.mp3 exists
   useEffect(() => {
-    const id = window.setInterval(() => setNowClock(new Date()), 30000);
-    return () => window.clearInterval(id);
+    const audio = new Audio();
+    audio.preload = 'metadata';
+    audio.loop = true;
+    audio.volume = initialPrefs.muted ? 0 : initialPrefs.volume;
+    audioRef.current = audio;
+
+    const onLoadedMeta = () => {
+      if (Number.isFinite(audio.duration)) {
+        setDuration(audio.duration);
+      }
+      setAudioAvailable(true);
+    };
+    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onEnded = () => setIsPlaying(false);
+    const onError = () => {
+      setAudioAvailable(false);
+      setIsPlaying(false);
+    };
+
+    audio.addEventListener('loadedmetadata', onLoadedMeta);
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('play', onPlay);
+    audio.addEventListener('pause', onPause);
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onError);
+
+    // Verify content-type via HEAD so Vite's SPA HTML fallback isn't mistaken for an MP3
+    let cancelled = false;
+    fetch(AUDIO_TRACK_PATH, { method: 'HEAD' })
+      .then((res) => {
+        if (cancelled) return;
+        const ct = res.headers.get('content-type') || '';
+        if (res.ok && (ct.startsWith('audio/') || ct.includes('octet-stream'))) {
+          audio.src = AUDIO_TRACK_PATH;
+          audio.load();
+        } else {
+          setAudioAvailable(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAudioAvailable(false);
+      });
+
+    return () => {
+      cancelled = true;
+      audio.pause();
+      audio.removeEventListener('loadedmetadata', onLoadedMeta);
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('pause', onPause);
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onError);
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const showToast = (msg: string) => {
-    setToastMsg(msg);
-    window.setTimeout(() => {
-      setToastMsg((curr) => (curr === msg ? null : curr));
-    }, 3200);
-  };
+  // Track active navigation section on scroll
+  useEffect(() => {
+    if (!envelopeOpened) return;
+    const handleScroll = () => {
+      const scrollY = window.scrollY + 140;
+      let current: NavSectionId = 'home';
+      for (const item of NAV_ITEMS) {
+        const el = document.getElementById(item.id);
+        if (el && el.offsetTop <= scrollY) {
+          current = item.id;
+        }
+      }
+      setActiveNav(current);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [envelopeOpened]);
 
-  const updateStore = (updater: (prev: FelizStudyStore) => FelizStudyStore) => {
-    setStore((prev) => updater(prev));
-  };
+  const handleLoadingComplete = useCallback(() => {
+    setLoadingDone(true);
+  }, []);
 
-  const navigateTo = (tab: StudyNavTab) => {
-    setActiveTab(tab);
-    setMobileMenuOpen(false);
-    setShowNotifications(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleQuickAction = (
-    action: 'schedule' | 'assignment' | 'focus' | 'note' | 'document' | 'ai'
-  ) => {
-    switch (action) {
-      case 'schedule':
-        navigateTo('schedule');
-        break;
-      case 'assignment':
-        navigateTo('assignments');
-        break;
-      case 'focus':
-        navigateTo('focus');
-        break;
-      case 'note':
-        navigateTo('notes');
-        break;
-      case 'document':
-        navigateTo('documents');
-        break;
-      case 'ai':
-        navigateTo('ai');
-        break;
+  const startPlaybackSafely = async () => {
+    const audio = audioRef.current;
+    if (!audio || !audioAvailable) return;
+    if (!audio.paused) return;
+    try {
+      await audio.play();
+    } catch {
+      setIsPlaying(false);
     }
   };
 
-  const handleAnalyzeDocumentWithAi = (doc: LectureDocument) => {
-    setAiDocToAnalyze(doc);
-    navigateTo('ai');
+  const handleOpenStart = (shouldStartMusic: boolean) => {
+    if (shouldStartMusic && audioAvailable) {
+      void startPlaybackSafely();
+    }
   };
 
-  const dateDisplay = useMemo(
-    () =>
-      new Intl.DateTimeFormat('id-ID', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }).format(nowClock),
-    [nowClock]
-  );
+  const handleOpeningComplete = () => {
+    setEnvelopeOpened(true);
+  };
 
-  const timeDisplay = useMemo(
-    () =>
-      new Intl.DateTimeFormat('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(nowClock),
-    [nowClock]
-  );
+  const handleTogglePlay = async () => {
+    const audio = audioRef.current;
+    if (!audio || !audioAvailable) return;
+    if (audio.paused) {
+      await startPlaybackSafely();
+    } else {
+      audio.pause();
+    }
+  };
 
-  // Global Search across all academic collections
-  const searchResults = useMemo(() => {
-    const q = globalSearch.trim().toLowerCase();
-    if (!q) return [];
-    const results: { id: string; title: string; meta: string; tab: StudyNavTab }[] = [];
+  const handleToggleMute = () => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    saveMusicPreferences({ volume, muted: nextMuted });
+    if (audioRef.current) {
+      audioRef.current.volume = nextMuted ? 0 : volume;
+    }
+  };
 
-    store.subjects.forEach((s) => {
-      if (s.name.toLowerCase().includes(q) || s.lecturer.toLowerCase().includes(q)) {
-        results.push({ id: s.id, title: s.name, meta: `Mata Kuliah · ${s.code || s.lecturer}`, tab: 'settings' });
-      }
+  const handleVolumeChange = (nextVol: number) => {
+    setVolume(nextVol);
+    const nextMuted = nextVol === 0 ? true : false;
+    setIsMuted(nextMuted);
+    saveMusicPreferences({ volume: nextVol, muted: nextMuted });
+    if (audioRef.current) {
+      audioRef.current.volume = nextMuted ? 0 : nextVol;
+    }
+  };
+
+  const handleSeek = (timeSec: number) => {
+    if (!audioRef.current || !audioAvailable) return;
+    audioRef.current.currentTime = timeSec;
+    setCurrentTime(timeSec);
+  };
+
+  const handleSelectLocalAudio = (file: File) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+    }
+    const url = URL.createObjectURL(file);
+    objectUrlRef.current = url;
+    audio.src = url;
+    audio.load();
+    setCustomSourceName(file.name);
+    setAudioAvailable(true);
+    audio.volume = isMuted ? 0 : volume;
+    audio.play().catch(() => setIsPlaying(false));
+  };
+
+  const triggerPetalShower = () => {
+    setShowerActive(false);
+    window.requestAnimationFrame(() => {
+      setShowerActive(true);
     });
-    store.schedules.forEach((sc) => {
-      if (sc.subjectName.toLowerCase().includes(q) || sc.classroom.toLowerCase().includes(q)) {
-        results.push({ id: sc.id, title: sc.subjectName, meta: `Jadwal · ${sc.day} ${sc.startTime}`, tab: 'schedule' });
-      }
-    });
-    store.assignments.forEach((a) => {
-      if (a.title.toLowerCase().includes(q) || a.subjectName.toLowerCase().includes(q)) {
-        results.push({ id: a.id, title: a.title, meta: `Tugas · ${a.subjectName}`, tab: 'assignments' });
-      }
-    });
-    store.notes.forEach((n) => {
-      if (n.title.toLowerCase().includes(q) || n.topic.toLowerCase().includes(q)) {
-        results.push({ id: n.id, title: n.title, meta: `Catatan · ${n.subjectName}`, tab: 'notes' });
-      }
-    });
-    store.documents.forEach((d) => {
-      if (d.name.toLowerCase().includes(q) || d.subjectName.toLowerCase().includes(q)) {
-        results.push({ id: d.id, title: d.name, meta: `Dokumen · ${d.fileExt}`, tab: 'documents' });
-      }
-    });
-    store.calendar_events.forEach((e) => {
-      if (e.title.toLowerCase().includes(q)) {
-        results.push({ id: e.id, title: e.title, meta: `Kalender · ${e.date}`, tab: 'calendar' });
-      }
-    });
+    window.setTimeout(() => {
+      setShowerActive(false);
+    }, 6200);
+  };
 
-    return results.slice(0, 8);
-  }, [globalSearch, store]);
-
-  // Real Notification Center items
-  const notifications = useMemo(() => {
-    if (!store.settings.notificationsEnabled) return [];
-    const list: { id: string; title: string; detail: string; tab: StudyNavTab }[] = [];
-
-    store.assignments
-      .filter((a) => a.status !== 'Completed')
-      .sort((a, b) => a.deadline.localeCompare(b.deadline))
-      .slice(0, 4)
-      .forEach((a) => {
-        const ind = getDeadlineIndicator(a);
-        list.push({
-          id: `n-asg-${a.id}`,
-          title: a.title,
-          detail: `${ind.label} · ${a.subjectName} (${a.deadline.slice(0, 10)})`,
-          tab: 'assignments',
-        });
-      });
-
-    store.calendar_events
-      .filter((ev) => ev.reminderEnabled)
-      .slice(0, 3)
-      .forEach((ev) => {
-        list.push({
-          id: `n-cal-${ev.id}`,
-          title: ev.title,
-          detail: `${ev.date} ${ev.time} · ${ev.category}`,
-          tab: 'calendar',
-        });
-      });
-
-    return list;
-  }, [store.assignments, store.calendar_events, store.settings.notificationsEnabled]);
+  const handleHeroMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const nx = (e.clientX - rect.left) / rect.width - 0.5;
+    const ny = (e.clientY - rect.top) / rect.height - 0.5;
+    setHeroTilt({ x: -ny * 8, y: nx * 12 });
+  };
 
   return (
-    <div className="min-h-screen bg-[#F1F5FB] text-slate-900 dark:bg-[#070B14] dark:text-[#EAF2FF] flex flex-col lg:flex-row">
-      {/* Desktop Left Sidebar */}
-      <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 border-r border-slate-200 dark:border-white/10 bg-white dark:bg-[#101B32] z-30">
-        <div className="p-5 border-b border-slate-200 dark:border-white/10 flex items-center gap-3">
-          <StudyLogo size={38} />
-          <div className="min-w-0">
-            <h1 className="font-display font-bold text-base tracking-wide text-slate-900 dark:text-[#EAF2FF] leading-none">
-              FELIZ STUDY
-            </h1>
-            <p className="text-[11px] font-accent text-[#2563EB] dark:text-[#38BDF8] mt-1 truncate">
-              Your Smart Academic Companion
-            </p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-gradient-to-b from-[#4A1020] via-[#3A0B18] to-[#24060E] text-[#FFF8F5] relative">
+      {!loadingDone && <LoadingFlowerOverlay onComplete={handleLoadingComplete} />}
 
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto" aria-label="Menu Akademik">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const active = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => navigateTo(item.id)}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap cursor-pointer ${
-                  active
-                    ? 'blue-gradient text-[#EAF2FF] blue-glow'
-                    : 'text-slate-600 dark:text-[#94A3B8] hover:bg-slate-100 dark:hover:bg-[#14213A] hover:text-slate-900 dark:hover:text-[#EAF2FF]'
-                }`}
+      <AmbientEffects showerActive={showerActive} showChrome={envelopeOpened} />
+
+      {!envelopeOpened ? (
+        <OpeningEnvelope
+          audioAvailable={audioAvailable}
+          onOpenStart={handleOpenStart}
+          onOpenComplete={handleOpeningComplete}
+        />
+      ) : (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.75 }}
+        >
+          {/* Minimalist 3-Zone Sticky Navigation */}
+          <header className="sticky top-0 z-40 glass-burgundy border-b border-[#F5B7C5]/15">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-8">
+              {/* Zone 1: Brand Wordmark */}
+              <a
+                href="#home"
+                className="font-display text-xl sm:text-2xl font-semibold tracking-wider text-[#FFF8F5] whitespace-nowrap shrink-0"
               >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+                DEAR, BEBE ♡
+              </a>
 
-        <div className="p-4 m-3 rounded-2xl border border-slate-200 dark:border-[#3B82F6]/25 bg-slate-50 dark:bg-[#14213A]/85">
-          <p className="text-xs font-display font-semibold text-slate-900 dark:text-[#EAF2FF] truncate">
-            {store.academic_profile.name}
-          </p>
-          <p className="text-[11px] text-slate-500 dark:text-[#94A3B8] mt-0.5 truncate">
-            {store.academic_profile.program} · Sem {store.academic_profile.semester}
-          </p>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <div className="flex-1 lg:pl-64 flex flex-col min-h-screen pb-20 lg:pb-8">
-        {/* Top Header */}
-        <header className="sticky top-0 z-20 backdrop-blur-md bg-white/85 dark:bg-[#070B14]/85 border-b border-slate-200 dark:border-white/10 px-4 sm:px-6 py-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
-            {/* Mobile Brand + Drawer Trigger */}
-            <div className="flex items-center gap-2.5 lg:hidden">
-              <button
-                onClick={() => setMobileMenuOpen(true)}
-                aria-label="Buka menu navigasi"
-                className="p-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-700 dark:text-[#EAF2FF] cursor-pointer"
-              >
-                <Menu className="w-5 h-5" />
-              </button>
-              <StudyLogo size={30} />
-              <span className="font-display font-bold text-sm tracking-wide whitespace-nowrap">
-                FELIZ STUDY
-              </span>
-            </div>
-
-            {/* Auto Date & Time (Desktop) */}
-            <div className="hidden lg:block shrink-0">
-              <p className="text-xs font-medium text-slate-500 dark:text-[#94A3B8] capitalize">
-                {dateDisplay} · <span className="font-mono-tabular text-[#2563EB] dark:text-[#38BDF8]">{timeDisplay}</span>
-              </p>
-            </div>
-
-            {/* Global Search */}
-            <div className="relative flex-1 max-w-md hidden sm:block">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={globalSearch}
-                onChange={(e) => setGlobalSearch(e.target.value)}
-                placeholder="Cari jadwal, mata kuliah, tugas, catatan, dokumen..."
-                className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#101B32] text-sm text-slate-900 dark:text-[#EAF2FF] placeholder:text-slate-400 focus:outline-none focus:border-[#38BDF8]"
-              />
-              {globalSearch && (
-                <button
-                  onClick={() => setGlobalSearch('')}
-                  aria-label="Hapus pencarian"
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-
-              {searchResults.length > 0 && (
-                <div className="absolute left-0 right-0 mt-2 rounded-2xl border border-slate-200 dark:border-[#3B82F6]/40 bg-white dark:bg-[#101B32] shadow-2xl p-2 space-y-1 z-40">
-                  {searchResults.map((res) => (
-                    <button
-                      key={`${res.tab}-${res.id}`}
-                      onClick={() => {
-                        setGlobalSearch('');
-                        navigateTo(res.tab);
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#14213A] cursor-pointer"
-                    >
-                      <p className="text-sm font-medium text-slate-900 dark:text-[#EAF2FF] truncate">
-                        {res.title}
-                      </p>
-                      <p className="text-xs text-[#2563EB] dark:text-[#38BDF8]">{res.meta}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Right Controls */}
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() =>
-                  updateStore((prev) => ({
-                    ...prev,
-                    settings: {
-                      ...prev.settings,
-                      theme: prev.settings.theme === 'dark' ? 'light' : 'dark',
-                    },
-                  }))
-                }
-                aria-label="Ganti tema gelap atau terang"
-                className="p-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-700 dark:text-[#EAF2FF] hover:border-[#38BDF8] cursor-pointer"
-              >
-                {store.settings.theme === 'dark' ? (
-                  <Sun className="w-4 h-4 text-[#38BDF8]" />
-                ) : (
-                  <Moon className="w-4 h-4 text-[#2563EB]" />
-                )}
-              </button>
-
-              {/* Notification Center */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowNotifications((s) => !s)}
-                  aria-label="Notification Center"
-                  className="relative p-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-700 dark:text-[#EAF2FF] hover:border-[#38BDF8] cursor-pointer"
-                >
-                  <Bell className="w-4 h-4" />
-                  {notifications.length > 0 && (
-                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#2563EB] text-white text-[10px] font-bold flex items-center justify-center">
-                      {notifications.length}
-                    </span>
-                  )}
-                </button>
-
-                {showNotifications && (
-                  <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-slate-200 dark:border-[#3B82F6]/40 bg-white dark:bg-[#101B32] shadow-2xl p-4 space-y-3 z-40">
-                    <div className="flex items-center justify-between">
-                      <span className="font-display font-bold text-sm">Notification Center</span>
-                      <button
-                        onClick={() => setShowNotifications(false)}
-                        className="text-xs text-slate-400 cursor-pointer"
-                      >
-                        Tutup
-                      </button>
-                    </div>
-                    {notifications.length === 0 ? (
-                      <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
-                        Tidak ada deadline atau pengingat aktif saat ini.
-                      </p>
-                    ) : (
-                      <div className="space-y-2 max-h-64 overflow-y-auto">
-                        {notifications.map((n) => (
-                          <button
-                            key={n.id}
-                            onClick={() => navigateTo(n.tab)}
-                            className="w-full text-left p-2.5 rounded-xl bg-slate-50 dark:bg-[#14213A] border border-transparent hover:border-[#38BDF8] cursor-pointer"
-                          >
-                            <p className="text-xs font-semibold text-slate-900 dark:text-[#EAF2FF] truncate">
-                              {n.title}
-                            </p>
-                            <p className="text-[11px] text-slate-500 dark:text-[#94A3B8] mt-0.5 truncate">
-                              {n.detail}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => navigateTo('settings')}
-                aria-label="Settings Shortcut"
-                className="p-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-700 dark:text-[#EAF2FF] hover:border-[#38BDF8] cursor-pointer"
-              >
-                <SettingsIcon className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </header>
-
-        {/* Active View */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
-          {activeTab === 'dashboard' && (
-            <DashboardView
-              store={store}
-              onNavigate={navigateTo}
-              onQuickAction={handleQuickAction}
-            />
-          )}
-          {activeTab === 'schedule' && (
-            <ScheduleView store={store} onUpdateStore={updateStore} onToast={showToast} />
-          )}
-          {activeTab === 'assignments' && (
-            <AssignmentsView store={store} onUpdateStore={updateStore} onToast={showToast} />
-          )}
-          {activeTab === 'focus' && (
-            <StudyFocusView store={store} onUpdateStore={updateStore} onToast={showToast} />
-          )}
-          {activeTab === 'notes' && (
-            <NotesView store={store} onUpdateStore={updateStore} onToast={showToast} />
-          )}
-          {activeTab === 'documents' && (
-            <DocumentsView
-              store={store}
-              onUpdateStore={updateStore}
-              onAnalyzeWithAi={handleAnalyzeDocumentWithAi}
-              onToast={showToast}
-            />
-          )}
-          {activeTab === 'ai' && (
-            <AiAssistantView
-              store={store}
-              onUpdateStore={updateStore}
-              preselectedDocument={aiDocToAnalyze}
-              onClearPreselectedDocument={() => setAiDocToAnalyze(null)}
-              onToast={showToast}
-            />
-          )}
-          {activeTab === 'progress' && <AcademicProgressView store={store} />}
-          {activeTab === 'calendar' && (
-            <CalendarView store={store} onUpdateStore={updateStore} onToast={showToast} />
-          )}
-          {activeTab === 'settings' && (
-            <SettingsView
-              store={store}
-              onUpdateStore={updateStore}
-              onReplaceStore={setStore}
-              onToast={showToast}
-            />
-          )}
-        </main>
-      </div>
-
-      {/* Mobile Bottom Navigation */}
-      <nav
-        aria-label="Navigasi Mobile"
-        className="lg:hidden fixed bottom-0 inset-x-0 z-30 h-16 bg-white/95 dark:bg-[#101B32]/95 backdrop-blur-md border-t border-slate-200 dark:border-white/10 grid grid-cols-5"
-      >
-        {MOBILE_BOTTOM_TABS.map((id) => {
-          const item = NAV_ITEMS.find((n) => n.id === id)!;
-          const Icon = item.icon;
-          const active = activeTab === id;
-          return (
-            <button
-              key={id}
-              onClick={() => navigateTo(id)}
-              className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium cursor-pointer ${
-                active ? 'text-[#38BDF8]' : 'text-slate-500 dark:text-[#94A3B8]'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span className="truncate max-w-[64px]">
-                {item.label === 'Dashboard'
-                  ? 'Home'
-                  : item.label === 'My Schedule'
-                    ? 'Schedule'
-                    : item.label === 'Study Focus'
-                      ? 'Focus'
-                      : item.label === 'AI Assistant'
-                        ? 'AI'
-                        : 'Tasks'}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* Mobile Drawer Menu */}
-      {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex">
-          <div className="w-72 max-w-[82vw] h-full bg-white dark:bg-[#101B32] border-r border-slate-200 dark:border-white/10 p-5 flex flex-col justify-between overflow-y-auto">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <StudyLogo size={32} />
-                  <div>
-                    <p className="font-display font-bold text-sm">FELIZ STUDY</p>
-                    <p className="text-[10px] text-[#38BDF8]">Your Smart Academic Companion</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setMobileMenuOpen(false)}
-                  aria-label="Tutup menu"
-                  className="p-1.5 text-slate-400 cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-1">
+              {/* Zone 2: Concise Nav Links with Active Section Indicator */}
+              <nav className="hidden md:flex items-center gap-6 lg:gap-8" aria-label="Primary">
                 {NAV_ITEMS.map((item) => {
-                  const Icon = item.icon;
-                  const active = activeTab === item.id;
+                  const isActive = activeNav === item.id;
                   return (
-                    <button
+                    <a
                       key={item.id}
-                      onClick={() => navigateTo(item.id)}
-                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium cursor-pointer ${
-                        active
-                          ? 'blue-gradient text-[#EAF2FF]'
-                          : 'text-slate-700 dark:text-[#EAF2FF]/85 hover:bg-slate-100 dark:hover:bg-[#14213A]'
+                      href={`#${item.id}`}
+                      className={`relative py-1 text-xs font-medium tracking-[0.15em] transition-colors whitespace-nowrap shrink-0 ${
+                        isActive ? 'text-[#FFF8F5]' : 'text-[#F1D6C8]/75 hover:text-[#FFF8F5]'
                       }`}
                     >
-                      <Icon className="w-4 h-4" />
-                      <span>{item.label}</span>
-                    </button>
+                      {item.label}
+                      {isActive && (
+                        <span className="absolute left-0 right-0 -bottom-0.5 h-[2px] rounded-full bg-gradient-to-r from-[#E63956] to-[#F5B7C5]" />
+                      )}
+                    </a>
                   );
                 })}
+              </nav>
+
+              {/* Zone 3: 1 Primary Action + Mobile Hamburger */}
+              <div className="flex items-center gap-3 shrink-0">
+                <a
+                  href="#surprise"
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#C62845] to-[#E63956] px-4 py-2 text-xs font-medium text-[#FFF8F5] shadow-sm hover:opacity-95 transition-opacity whitespace-nowrap shrink-0"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Final Surprise</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen((prev) => !prev)}
+                  aria-label="Toggle navigation menu"
+                  className="md:hidden w-10 h-10 rounded-full bg-[#4A1020] border border-[#F5B7C5]/30 flex items-center justify-center text-[#FFF8F5]"
+                >
+                  {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
-            <p className="text-xs text-slate-500 dark:text-[#94A3B8] pt-4 border-t border-slate-200 dark:border-white/10">
-              {dateDisplay} · {timeDisplay}
+            {/* Mobile Hamburger Drawer */}
+            <AnimatePresence>
+              {mobileMenuOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="md:hidden overflow-hidden border-t border-[#F5B7C5]/15 bg-[#2B0712]/95 backdrop-blur-md"
+                >
+                  <nav className="flex flex-col px-6 py-4 space-y-3">
+                    {NAV_ITEMS.map((item) => (
+                      <a
+                        key={item.id}
+                        href={`#${item.id}`}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`text-xs font-medium tracking-[0.18em] py-1.5 ${
+                          activeNav === item.id ? 'text-[#F5B7C5]' : 'text-[#FFF8F5]/85'
+                        }`}
+                      >
+                        {item.label}
+                      </a>
+                    ))}
+                    <a
+                      href="#surprise"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#C62845] to-[#E63956] px-4 py-2.5 text-xs font-medium text-[#FFF8F5]"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>One Last Surprise ♡</span>
+                    </a>
+                  </nav>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </header>
+
+          <main>
+            {/* Section 3: Homepage Hero */}
+            <section
+              id="home"
+              onMouseMove={handleHeroMouseMove}
+              className="relative pt-12 pb-16 sm:pt-20 sm:pb-24 px-4 sm:px-6 overflow-hidden"
+            >
+              <CornerRoseSvg className="pointer-events-none absolute -top-12 -left-12 w-48 h-48 sm:w-64 sm:h-64 opacity-45" />
+              <CornerRoseSvg className="pointer-events-none absolute -top-12 -right-12 w-48 h-48 sm:w-64 sm:h-64 -scale-x-100 opacity-45" />
+              <div className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 w-[540px] h-[360px] rounded-full bg-[#C62845]/25 blur-[130px]" />
+
+              <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 items-center gap-10 lg:gap-8 relative z-10">
+                <div className="lg:col-span-7 text-center lg:text-left">
+                  <motion.p
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6 }}
+                    className="font-script text-3xl sm:text-4xl text-[#F5B7C5]"
+                  >
+                    A little world, made just for you.
+                  </motion.p>
+
+                  <motion.h1
+                    initial={{ opacity: 0, y: 18 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.75, delay: 0.1 }}
+                    className="mt-2 font-display text-5xl sm:text-7xl font-semibold tracking-tight text-[#FFF8F5]"
+                  >
+                    DEAR, BEBE ♡
+                  </motion.h1>
+
+                  <motion.p
+                    initial={{ opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.75, delay: 0.2 }}
+                    className="mt-4 text-base sm:text-lg text-[#F1D6C8] max-w-xl mx-auto lg:mx-0 leading-relaxed"
+                  >
+                    Some things are better expressed through little surprises.
+                  </motion.p>
+
+                  <motion.div
+                    initial={{ opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.75, delay: 0.3 }}
+                    className="mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-3.5"
+                  >
+                    <a
+                      href="#letter"
+                      className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#C62845] via-[#E63956] to-[#C62845] border border-[#F5B7C5]/45 px-7 py-3.5 text-sm font-medium text-[#FFF8F5] shadow-[0_14px_32px_-8px_rgba(230,57,86,0.7)] hover:scale-[1.03] transition-transform whitespace-nowrap shrink-0"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>Discover Your Surprise</span>
+                    </a>
+
+                    <a
+                      href="#bouquet"
+                      className="inline-flex items-center gap-2 rounded-full bg-[#4A1020]/85 border border-[#F5B7C5]/35 px-7 py-3.5 text-sm font-medium text-[#FFF8F5] hover:bg-[#7D1429] transition-colors whitespace-nowrap shrink-0"
+                    >
+                      <Heart className="w-4 h-4 text-[#F5B7C5]" />
+                      <span>Meet Your Bouquet</span>
+                    </a>
+                  </motion.div>
+                </div>
+
+                {/* Homepage Visual: Digital Bouquet Illustration */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.85, delay: 0.15 }}
+                  className="lg:col-span-5"
+                >
+                  <div className="max-w-[320px] sm:max-w-[360px] mx-auto">
+                    <DigitalBouquetArtwork
+                      bloomedCount={BOUQUET_FLOWERS.length}
+                      rotateX={heroTilt.x}
+                      rotateY={heroTilt.y}
+                    />
+                  </div>
+                </motion.div>
+              </div>
+            </section>
+
+            {/* Section 4: Interactive Digital Flower Bouquet */}
+            <InteractiveBouquet />
+
+            {/* Section 5: A Little Letter For Bebe */}
+            <LoveLetterSection />
+
+            {/* Section 6: Little Things That Make You Special */}
+            <SpecialReasonsSection />
+
+            {/* Section 7: Digital Red Flower Garden */}
+            <DigitalGardenSection />
+
+            {/* Section 9: One Last Surprise */}
+            <FinalSurpriseSection onTriggerShower={triggerPetalShower} />
+          </main>
+
+          {/* Quiet Editorial Footer (extra bottom padding on mobile so fixed player never covers text) */}
+          <footer className="pt-10 pb-28 sm:pb-12 px-4 text-center border-t border-[#F5B7C5]/15 bg-[#24060E]/75">
+            <p className="font-script text-3xl text-[#F5B7C5]">DEAR, BEBE ♡</p>
+            <p className="mt-1 text-xs text-[#F1D6C8]/75">
+              A little world, made just for you.
             </p>
-          </div>
-          <div className="flex-1" onClick={() => setMobileMenuOpen(false)} />
-        </div>
+          </footer>
+        </motion.div>
       )}
 
-      {/* Toast Notification */}
-      {toastMsg && (
-        <div className="fixed bottom-20 lg:bottom-6 right-4 sm:right-6 z-50 px-4 py-3 rounded-xl border border-[#38BDF8]/50 bg-[#101B32] text-[#EAF2FF] text-sm font-medium shadow-2xl blue-glow">
-          {toastMsg}
-        </div>
+      {/* Section 8: Persistent Music Player (Cause You Have — LANY) */}
+      {envelopeOpened && (
+        <MusicPlayerWidget
+          audioAvailable={audioAvailable}
+          customSourceName={customSourceName}
+          isPlaying={isPlaying}
+          isMuted={isMuted}
+          volume={volume}
+          currentTime={currentTime}
+          duration={duration}
+          onTogglePlay={handleTogglePlay}
+          onToggleMute={handleToggleMute}
+          onVolumeChange={handleVolumeChange}
+          onSeek={handleSeek}
+          onSelectLocalAudio={handleSelectLocalAudio}
+        />
       )}
     </div>
   );
 }
+
+export default App;
